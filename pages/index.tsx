@@ -1,7 +1,38 @@
-import Head from 'next/head';
-import { links } from '../data/links';
+import { gql, useQuery } from "@apollo/client";
+import { withPageAuthRequired } from "@auth0/nextjs-auth0";
+import Head from "next/head";
 
-export default function Home() {
+const GET_LINKS = gql`
+  query GetLinks($first: Int, $after: String) {
+    links(first: $first, after: $after) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        cursor
+        node {
+          id
+          title
+          description
+          url
+          category
+          imageUrl
+        }
+      }
+    }
+  }
+`;
+// wrap in withPageAuthRequired to ensure User is logged in, else directs to auth login page. feed in user obj
+export default withPageAuthRequired(function Home({ user }) {
+  const { data, error, loading, fetchMore } = useQuery(GET_LINKS, {
+    variables: { first: 2 },
+  });
+
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Oh no... {error.message}</p>;
+
+  const { endCursor, hasNextPage } = data.links.pageInfo;
   return (
     <div>
       <Head>
@@ -10,16 +41,20 @@ export default function Home() {
       </Head>
 
       <div className="container mx-auto max-w-5xl my-20">
+        <h1 className="font-serif text-lg font-semibold">
+          Welcome {user.name}
+        </h1>
+        <br />
         <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {links.map((link) => (
-            <li key={link.id} className="shadow  max-w-md  rounded">
-              <img className="shadow-sm" src={link.imageUrl} />
+          {data?.links.edges.map(({ node }) => (
+            <li key={node.id} className="shadow  max-w-md  rounded">
+              <img className="shadow-sm" src={node.imageUrl} />
               <div className="p-5 flex flex-col space-y-2">
-                <p className="text-sm text-blue-500">{link.category}</p>
-                <p className="text-lg font-medium">{link.title}</p>
-                <p className="text-gray-600">{link.description}</p>
-                <a href={link.url} className="flex hover:text-blue-500">
-                  {link.url.replace(/(^\w+:|^)\/\//, '')}
+                <p className="text-sm text-blue-500">{node.category}</p>
+                <p className="text-lg font-medium">{node.title}</p>
+                <p className="text-gray-600">{node.description}</p>
+                <a href={node.url} className="flex hover:text-blue-500">
+                  {node.url.replace(/(^\w+:|^)\/\//, "")}
                   <svg
                     className="w-4 h-4 my-1"
                     fill="currentColor"
@@ -34,7 +69,30 @@ export default function Home() {
             </li>
           ))}
         </ul>
+        {hasNextPage ? (
+          <button
+            className="px-4 py-2 bg-blue-500 text-white rounded my-10"
+            onClick={() =>
+              fetchMore({
+                variables: { after: endCursor },
+                updateQuery: (prevResult, { fetchMoreResult }) => {
+                  fetchMoreResult.links.edges = [
+                    ...prevResult.links.edges,
+                    ...fetchMoreResult.links.edges,
+                  ];
+                  return fetchMoreResult;
+                },
+              })
+            }
+          >
+            more links
+          </button>
+        ) : (
+          <p className="my-10 text-center font-medium">
+            You've reached the end!{" "}
+          </p>
+        )}
       </div>
     </div>
   );
-}
+});
